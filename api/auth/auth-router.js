@@ -1,7 +1,7 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const Users = require('../users/users-model');
-
+const { checkUsernameFree, checkUsernameExists, checkPasswordLength } = require('./auth-middleware');
 const router = express.Router();
 
 // Require `checkUsernameFree`, `checkUsernameExists` and `checkPasswordLength`
@@ -29,23 +29,9 @@ const router = express.Router();
     "message": "Password must be longer than 3 chars"
   }
  */
-router.post('/api/auth/register', async (req, res, next) => {
+router.post('/api/auth/register', checkUsernameFree(), checkPasswordLength(), async (req, res, next) => {
 	try {
 		const { username, password } = req.body;
-		const user = await Users.findBy({ username }).first();
-
-		if (user) {
-			return res.status(422).json({
-				message: 'Username taken.'
-			});
-		}
-
-		if (password <= 3) {
-			return res.status(422).json({
-				message: 'Password must be longer than 3 chars.'
-			});
-		}
-
 		const newUser = await Users.add({
 			username,
 			password: await bcrypt.hash(password, 14)
@@ -72,23 +58,12 @@ router.post('/api/auth/register', async (req, res, next) => {
     "message": "Invalid credentials"
   }
  */
-router.post('/api/auth/login', async (req, res, next) => {
+router.post('/api/auth/login', checkUsernameExists(), async (req, res, next) => {
 	try {
-		const { username, password } = req.body;
-		const user = await Users.findBy({ username }).first();
-
-		const passwordValid = await bcrypt.compare(password, user ? user.password : '');
-
-		if (!user || !passwordValid) {
-			return res.status(401).json({
-				message: 'Invalid credentials.'
-			});
-		}
-
-		req.session.user = user;
-
+		req.session.user = req.user;
+		console.log(req.user);
 		res.json({
-			message: `Welcome ${user.username}`
+			message: `Welcome ${req.user.username}`
 		});
 	} catch (err) {
 		next(err);
@@ -113,11 +88,21 @@ router.post('/api/auth/login', async (req, res, next) => {
 
 router.get('/api/auth/logout', async (req, res, next) => {
 	try {
+		if (!req.session.user) {
+			return res.status(200).json({
+				message: 'No session.'
+			});
+		}
+
 		req.session.destroy(err => {
 			if (err) {
 				next(err);
 			} else {
-				res.status(204).end();
+				res.status(200)
+					.json({
+						message: 'Logged out.'
+					})
+					.end();
 			}
 		});
 	} catch (err) {
@@ -126,3 +111,5 @@ router.get('/api/auth/logout', async (req, res, next) => {
 });
 
 // Don't forget to add the router to the `exports` object so it can be required in other modules
+
+module.exports = router;
